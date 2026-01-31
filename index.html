@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buxgalteriya va Qarz Nazorati - Davr Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div id="loader" class="loading-overlay">
+        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700"></div>
+    </div>
+
+    <!-- Navigatsiya -->
+    <nav class="bg-blue-700 text-white shadow-lg sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+            <h1 class="text-xl font-bold tracking-tight text-white italic">Davr-Nazorat <span class="text-blue-200">Pro</span></h1>
+            <div class="space-x-2 md:space-x-4 flex">
+                <button onclick="showTab('dashboard')" class="hover:bg-blue-600 px-3 py-1 rounded-lg transition font-medium text-sm md:text-base">Hisobotlar</button>
+                <button onclick="showTab('customers')" class="hover:bg-blue-600 px-3 py-1 rounded-lg transition font-medium text-sm md:text-base">Mijozlar</button>
+                <button onclick="showTab('sales')" class="hover:bg-blue-600 px-3 py-1 rounded-lg transition font-medium text-sm md:text-base">Tarix</button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto p-4 md:p-6">
+        
+        <!-- DASHBOARD -->
+        <div id="dashboard" class="tab-content active space-y-6">
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-white p-6 rounded-2xl shadow-sm border-b-4 border-blue-500">
+                    <p class="text-xs text-gray-400 uppercase font-bold tracking-wider">Bugungi savdo</p>
+                    <h2 id="todaySales" class="text-2xl font-black mt-1">0 so'm</h2>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border-b-4 border-red-500">
+                    <p class="text-xs text-gray-400 uppercase font-bold tracking-wider">Umumiy Qarzlar</p>
+                    <h2 id="totalDebts" class="text-2xl font-black mt-1 text-red-600">0 so'm</h2>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border-b-4 border-green-500">
+                    <p class="text-xs text-gray-400 uppercase font-bold tracking-wider">Haftalik savdo</p>
+                    <h2 id="weeklySales" class="text-2xl font-black mt-1">0 so'm</h2>
+                </div>
+                <div class="bg-white p-6 rounded-2xl shadow-sm border-b-4 border-purple-500">
+                    <p class="text-xs text-gray-400 uppercase font-bold tracking-wider">Oylik savdo</p>
+                    <h2 id="monthlySales" class="text-2xl font-black mt-1">0 so'm</h2>
+                </div>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-800">Savdo dinamikasi</h3>
+                        <p class="text-sm text-gray-400">Haftalik ko'rsatkich</p>
+                    </div>
+                </div>
+                <div class="relative h-[300px]">
+                    <canvas id="salesChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- MIJOZLAR -->
+        <div id="customers" class="tab-content space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                <h2 class="text-2xl font-black text-gray-800 w-full md:w-auto text-center md:text-left">Mijozlar Bazasi</h2>
+                <div class="flex gap-2 w-full md:w-auto">
+                    <input type="text" id="customerSearch" oninput="window.renderAll()" placeholder="Qidiruv..." class="border border-gray-200 p-2 pl-4 rounded-xl w-full md:w-64 outline-none">
+                    <button onclick="openModal('customerModal')" class="bg-blue-600 text-white px-6 py-2 rounded-xl hover:bg-blue-700 font-bold shadow-md">+ Yangi</button>
+                </div>
+            </div>
+            
+            <div class="overflow-x-auto bg-white rounded-2xl shadow-sm border border-gray-100">
+                <table class="w-full text-left border-collapse min-w-[600px]">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="p-4 text-xs font-bold text-gray-400 uppercase">Mijoz</th>
+                            <th class="p-4 text-xs font-bold text-gray-400 uppercase">Telefon</th>
+                            <th class="p-4 text-xs font-bold text-gray-400 uppercase">Qarz</th>
+                            <th class="p-4 text-xs font-bold text-gray-400 uppercase text-right">Amal</th>
+                        </tr>
+                    </thead>
+                    <tbody id="customerList"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- SAVDO TARIXI -->
+        <div id="sales" class="tab-content space-y-4">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                <h2 class="text-2xl font-black text-gray-800 w-full md:w-auto text-center md:text-left">Amallar Tarixi</h2>
+                <button onclick="openModal('saleModal')" class="bg-green-600 text-white px-6 py-2 rounded-xl hover:bg-green-700 font-bold shadow-md w-full md:w-auto">+ Yangi Sotuv</button>
+            </div>
+            <div class="overflow-x-auto bg-white rounded-2xl shadow-sm border border-gray-100">
+                <table class="w-full text-left border-collapse min-w-[600px]">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="p-4 text-xs font-bold text-gray-400 uppercase">Sana</th>
+                            <th class="p-4 text-xs font-bold text-gray-400 uppercase">Mijoz</th>
+                            <th class="p-4 text-xs font-bold text-gray-400 uppercase">Mahsulot</th>
+                            <th class="p-4 text-xs font-bold text-gray-400 uppercase">Summa</th>
+                            <th class="p-4 text-xs font-bold text-gray-400 uppercase">Tur</th>
+                        </tr>
+                    </thead>
+                    <tbody id="salesHistoryTable"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- YANGI MIJOZ MODAL (KENGAYTIRILGAN) -->
+    <div id="customerModal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-[60] backdrop-blur-sm">
+        <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl">
+            <h3 class="text-xl font-black mb-6">👤 Yangi Mijoz & Savdo</h3>
+            <div class="space-y-4">
+                <input type="text" id="custName" placeholder="Mijoz ismi" class="w-full border p-3 rounded-xl outline-none focus:border-blue-500">
+                <input type="text" id="custPhone" placeholder="Telefon (+998)" class="w-full border p-3 rounded-xl outline-none focus:border-blue-500">
+                
+                <div class="border-t pt-4">
+                    <p class="text-xs font-bold text-gray-400 uppercase mb-2 text-center">Birinchi savdo tafsilotlari</p>
+                    <input type="text" id="custFirstItem" placeholder="Nima sotildi? (masalan: Un, Yog')" class="w-full border p-3 rounded-xl outline-none mb-3">
+                    <input type="number" id="custTotalAmount" placeholder="Jami xarid summasi" class="w-full border p-3 rounded-xl outline-none mb-3">
+                    <input type="number" id="custPaidAmount" placeholder="Qancha to'ladi? (bergani)" class="w-full border p-3 rounded-xl outline-none">
+                    <p class="text-[10px] text-gray-500 mt-1 italic">* Jami summadan to'langan qismi ayirilib, qolgani qarzga yoziladi.</p>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button onclick="closeModal('customerModal')" class="flex-1 bg-gray-100 py-3 rounded-xl font-bold">Bekor</button>
+                    <button id="saveCustomerBtn" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700">Saqlash</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- YANGI SOTUV MODAL -->
+    <div id="saleModal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-[60] backdrop-blur-sm">
+        <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl">
+            <h3 class="text-xl font-black mb-6">📦 Yangi Sotuv</h3>
+            <div class="space-y-4">
+                <select id="saleCustomer" class="w-full border p-3 rounded-xl outline-none"></select>
+                <input type="text" id="saleItem" placeholder="Mahsulot nomi" class="w-full border p-3 rounded-xl outline-none">
+                <input type="number" id="saleAmount" placeholder="Summa" class="w-full border p-3 rounded-xl outline-none">
+                <div class="flex gap-3">
+                    <button onclick="closeModal('saleModal')" class="flex-1 bg-gray-100 py-3 rounded-xl font-bold">Bekor</button>
+                    <button id="confirmSaleBtn" class="flex-1 bg-green-600 text-white py-3 rounded-xl font-bold">Sotish</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QARZ TO'LASH MODAL -->
+    <div id="paymentModal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center p-4 z-[60] backdrop-blur-sm">
+        <div class="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl">
+            <h3 class="text-xl font-black mb-6">💸 Qarz To'lovi</h3>
+            <div class="space-y-4">
+                <p id="paymentTargetName" class="font-bold text-blue-700"></p>
+                <input type="number" id="paymentAmount" placeholder="To'lov summasi" class="w-full border p-3 rounded-xl outline-none text-xl font-bold">
+                <div class="flex gap-3">
+                    <button onclick="closeModal('paymentModal')" class="flex-1 bg-gray-100 py-3 rounded-xl font-bold">Bekor</button>
+                    <button id="confirmPaymentBtn" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold">Saqlash</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = JSON.parse(__firebase_config);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'davr-nazorat-app';
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        let userSession = null;
+        let customersData = [];
+        let salesData = [];
+        let activeCustomerId = null;
+
+        const initAuth = async () => {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("Auth error:", err);
+            }
+        };
+
+        onAuthStateChanged(auth, (user) => {
+            userSession = user;
+            if (user) {
+                document.getElementById('loader').classList.add('hidden');
+                startSync();
+            }
+        });
+
+        initAuth();
+
+        function startSync() {
+            if (!userSession) return;
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'customers'), (snap) => {
+                customersData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                window.renderAll();
+            }, (err) => console.error("Customer sync error:", err));
+
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'sales'), (snap) => {
+                salesData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+                window.renderAll();
+            }, (err) => console.error("Sales sync error:", err));
+        }
+
+        window.showTab = (id) => {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        };
+
+        window.openModal = (id, targetId = null) => {
+            document.getElementById(id).classList.remove('hidden');
+            if (id === 'saleModal') {
+                const select = document.getElementById('saleCustomer');
+                select.innerHTML = customersData.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+            }
+            if (id === 'paymentModal') {
+                activeCustomerId = targetId;
+                const c = customersData.find(x => x.id === targetId);
+                document.getElementById('paymentTargetName').innerText = c ? c.name : '';
+            }
+        };
+
+        window.closeModal = (id) => {
+            document.getElementById(id).classList.add('hidden');
+        };
+
+        document.getElementById('saveCustomerBtn').onclick = async () => {
+            if (!userSession) return;
+            const name = document.getElementById('custName').value;
+            const phone = document.getElementById('custPhone').value;
+            const item = document.getElementById('custFirstItem').value || 'Dastlabki xarid';
+            const total = parseFloat(document.getElementById('custTotalAmount').value) || 0;
+            const paid = parseFloat(document.getElementById('custPaidAmount').value) || 0;
+            
+            const qarz = total - paid;
+
+            if (!name) return;
+
+            // 1. Mijozni yaratish
+            const custRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'customers'), {
+                name, phone, totalDebt: qarz, createdAt: serverTimestamp()
+            });
+
+            // 2. Agar xarid summasi bo'lsa, tarixga yozish
+            if (total > 0) {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales'), {
+                    customerId: custRef.id, item, amount: total, type: 'sale', date: new Date().toISOString()
+                });
+            }
+
+            // 3. Agar to'lov bo'lsa, tarixga to'lov sifatida yozish
+            if (paid > 0) {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales'), {
+                    customerId: custRef.id, item: 'Boshlang\'ich to\'lov', amount: paid, type: 'payment', date: new Date().toISOString()
+                });
+            }
+
+            closeModal('customerModal');
+            // Formani tozalash
+            document.getElementById('custName').value = '';
+            document.getElementById('custPhone').value = '';
+            document.getElementById('custFirstItem').value = '';
+            document.getElementById('custTotalAmount').value = '';
+            document.getElementById('custPaidAmount').value = '';
+        };
+
+        document.getElementById('confirmSaleBtn').onclick = async () => {
+            if (!userSession) return;
+            const id = document.getElementById('saleCustomer').value;
+            const item = document.getElementById('saleItem').value;
+            const amount = parseFloat(document.getElementById('saleAmount').value);
+            if (!id || !amount) return;
+            const c = customersData.find(x => x.id === id);
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales'), {
+                customerId: id, item, amount, type: 'sale', date: new Date().toISOString()
+            });
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', id), {
+                totalDebt: (c.totalDebt || 0) + amount
+            });
+            closeModal('saleModal');
+        };
+
+        document.getElementById('confirmPaymentBtn').onclick = async () => {
+            if (!userSession) return;
+            const amount = parseFloat(document.getElementById('paymentAmount').value);
+            if (!amount || !activeCustomerId) return;
+            const c = customersData.find(x => x.id === activeCustomerId);
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales'), {
+                customerId: activeCustomerId, item: 'Qarz to\'lovi', amount, type: 'payment', date: new Date().toISOString()
+            });
+            await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', activeCustomerId), {
+                totalDebt: (c.totalDebt || 0) - amount
+            });
+            closeModal('paymentModal');
+        };
+
+        window.renderAll = () => {
+            const search = document.getElementById('customerSearch').value.toLowerCase();
+            const totalDebtVal = customersData.reduce((a, b) => a + (b.totalDebt || 0), 0);
+            document.getElementById('totalDebts').innerText = totalDebtVal.toLocaleString() + " so'm";
+
+            const cList = document.getElementById('customerList');
+            cList.innerHTML = customersData.filter(c => c.name.toLowerCase().includes(search)).map(c => `
+                <tr class="border-t hover:bg-gray-50 transition">
+                    <td class="p-4 font-bold">${c.name}</td>
+                    <td class="p-4 text-gray-500">${c.phone || '-'}</td>
+                    <td class="p-4 font-bold text-red-600">${(c.totalDebt || 0).toLocaleString()}</td>
+                    <td class="p-4 text-right">
+                        <button onclick="openModal('paymentModal', '${c.id}')" class="bg-blue-600 text-white px-4 py-1 rounded-lg text-xs font-bold hover:bg-blue-700 transition">To'lov</button>
+                    </td>
+                </tr>
+            `).join('');
+
+            const sList = document.getElementById('salesHistoryTable');
+            sList.innerHTML = salesData.sort((a,b) => new Date(b.date) - new Date(a.date)).map(s => {
+                const c = customersData.find(x => x.id === s.customerId);
+                return `
+                    <tr class="border-t text-sm hover:bg-gray-50 transition">
+                        <td class="p-4 text-gray-400 font-mono">${new Date(s.date).toLocaleDateString()}</td>
+                        <td class="p-4 font-medium">${c ? c.name : 'O\'chirilgan'}</td>
+                        <td class="p-4">${s.item}</td>
+                        <td class="p-4 font-bold">${s.amount.toLocaleString()}</td>
+                        <td class="p-4"><span class="${s.type === 'sale' ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'} px-2 py-1 rounded text-[10px] uppercase font-black">${s.type === 'sale' ? 'Nasiya' : 'To\'lov'}</span></td>
+                    </tr>
+                `;
+            }).join('');
+            
+            updateChart();
+        };
+
+        let chartInstance = null;
+        function updateChart() {
+            const ctx = document.getElementById('salesChart')?.getContext('2d');
+            if (!ctx) return;
+            if (chartInstance) chartInstance.destroy();
+            const recentSales = salesData.filter(s => s.type === 'sale').sort((a,b) => new Date(a.date) - new Date(b.date)).slice(-7);
+            chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: recentSales.map(s => new Date(s.date).toLocaleDateString()),
+                    datasets: [{
+                        label: 'Savdo summasi',
+                        data: recentSales.map(s => s.amount),
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            });
+        }
+    </script>
+</body>
+</html>
