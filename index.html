@@ -152,21 +152,21 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Konfiguratsiyalar
-        let firebaseConfig;
-        try {
-            firebaseConfig = JSON.parse(__firebase_config);
-        } catch (e) {
-            document.getElementById('loader-text').innerText = "Firebase konfiguratsiyasi topilmadi!";
-            document.getElementById('loader-spinner').classList.add('hidden');
-            throw new Error("Firebase config error");
-        }
+        // Firebase konfiguratsiyasi - Siz bergan ma'lumotlar
+        const firebaseConfig = {
+            apiKey: "AIzaSyATxcw1JwtS1rixD1eUm0yJzcESeeQLQnw",
+            authDomain: "meningbuxgalteriyam.firebaseapp.com",
+            projectId: "meningbuxgalteriyam",
+            storageBucket: "meningbuxgalteriyam.firebasestorage.app",
+            messagingSenderId: "358385708799",
+            appId: "1:358385708799:web:38c7d59f157bb1a269e6ca",
+            measurementId: "G-X1NDN28KBK"
+        };
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'davr-nazorat-app';
-        const initialToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const appId = 'mening-buxgalteriyam-v1';
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -177,28 +177,21 @@
         let activeCustomerId = null;
         let chartInstance = null;
 
-        // Xatoliklarni ko'rsatish funksiyasi
         const showError = (msg) => {
             document.getElementById('loader-text').innerHTML = `<span class="text-red-600">Xatolik: ${msg}</span>`;
             document.getElementById('loader-spinner').classList.add('hidden');
             document.getElementById('retry-btn').classList.remove('hidden');
         };
 
-        // Autentifikatsiya
         const initAuth = async () => {
             try {
-                if (initialToken) {
-                    await signInWithCustomToken(auth, initialToken);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                await signInAnonymously(auth);
             } catch (error) {
                 console.error("Auth xatosi:", error);
-                showError("Tizimga kirish imkonsiz (Internet yoki Ruxsat yo'q)");
+                showError("Firebase-da 'Anonymous Auth' yoqilmagan bo'lishi mumkin.");
             }
         };
 
-        // Kirish holatini kuzatish
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 console.log("Tizimga kirildi:", user.uid);
@@ -209,38 +202,29 @@
         });
 
         function startSync() {
+            // Firestore path qoidasiga muvofiq (RULE 1)
             const customersRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
             const salesRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales');
 
-            // Ma'lumotlarni tinglash
-            let loadedCount = 0;
-            const checkInitialLoad = () => {
-                loadedCount++;
-                if (loadedCount >= 2) {
-                    document.getElementById('loader').classList.add('hidden');
-                }
+            let loaded = 0;
+            const checkLoad = () => {
+                loaded++;
+                if (loaded >= 2) document.getElementById('loader').classList.add('hidden');
             };
 
             onSnapshot(customersRef, (snap) => {
                 customersData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 window.renderAll();
-                checkInitialLoad();
-            }, (error) => {
-                console.error("Mijozlarni yuklashda xato:", error);
-                showError("Bazadan ma'lumot olishda xato (Ruxsat yo'q)");
-            });
+                checkLoad();
+            }, (err) => showError("Firestore Rules-da o'qishga ruxsat yo'q"));
 
             onSnapshot(salesRef, (snap) => {
                 salesData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 window.renderAll();
-                checkInitialLoad();
-            }, (error) => {
-                console.error("Tarixni yuklashda xato:", error);
-                showError("Bazadan tarixni olishda xato");
-            });
+                checkLoad();
+            }, (err) => console.error(err));
         }
 
-        // --- GLOBAL FUNKSIYALAR ---
         window.showTab = (id) => {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.getElementById(id).classList.add('active');
@@ -257,14 +241,10 @@
             }
         };
 
-        window.closeModal = (id) => {
-            document.getElementById(id).classList.add('hidden');
-        };
+        window.closeModal = (id) => document.getElementById(id).classList.add('hidden');
 
-        // Qidiruv funksiyasi
         document.getElementById('customerSearch').addEventListener('input', () => window.renderAll());
 
-        // Saqlash - Yangi mijoz
         document.getElementById('saveCustomerBtn').onclick = async () => {
             if (!auth.currentUser) return;
             const name = document.getElementById('custName').value.trim();
@@ -291,13 +271,11 @@
                         customerId: custRef.id, item: 'Boshlang\'ich to\'lov', amount: paid, type: 'payment', date: new Date().toISOString()
                     });
                 }
-
                 closeModal('customerModal');
                 ['custName', 'custPhone', 'custFirstItem', 'custTotalAmount', 'custPaidAmount'].forEach(id => document.getElementById(id).value = '');
             } catch (e) { console.error(e); }
         };
 
-        // To'lovni tasdiqlash
         document.getElementById('confirmPaymentBtn').onclick = async () => {
             if (!auth.currentUser || !activeCustomerId) return;
             const amount = parseFloat(document.getElementById('paymentAmount').value);
@@ -311,25 +289,19 @@
                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', activeCustomerId), {
                     totalDebt: (c.totalDebt || 0) - amount
                 });
-
                 closeModal('paymentModal');
             } catch (e) { console.error(e); }
         };
 
         window.renderAll = () => {
-            const searchInput = document.getElementById('customerSearch');
-            const search = searchInput ? searchInput.value.toLowerCase() : "";
-
-            // Statistika
+            const search = document.getElementById('customerSearch').value.toLowerCase();
             const totalQarz = customersData.reduce((a, b) => a + (b.totalDebt || 0), 0);
             document.getElementById('totalDebts').innerText = totalQarz.toLocaleString() + " so'm";
             
-            const now = new Date();
-            const todayStr = now.toISOString().split('T')[0];
+            const todayStr = new Date().toISOString().split('T')[0];
             const todayS = salesData.filter(s => s.date.startsWith(todayStr) && s.type === 'sale').reduce((a, b) => a + b.amount, 0);
             document.getElementById('todaySales').innerText = todayS.toLocaleString() + " so'm";
 
-            // Mijozlar ro'yxati
             document.getElementById('customerList').innerHTML = customersData
                 .filter(c => c.name.toLowerCase().includes(search))
                 .sort((a,b) => (b.totalDebt || 0) - (a.totalDebt || 0))
@@ -343,7 +315,6 @@
                     </td>
                 </tr>`).join('');
 
-            // Tarix
             document.getElementById('salesHistoryTable').innerHTML = salesData.sort((a,b) => new Date(b.date) - new Date(a.date)).map(s => {
                 const c = customersData.find(x => x.id === s.customerId);
                 return `
@@ -355,24 +326,18 @@
                     <td class="p-4"><span class="${s.type === 'sale' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'} px-2 py-1 rounded-md font-black text-[10px] uppercase">${s.type === 'sale' ? 'Nasiya' : 'To\'lov'}</span></td>
                 </tr>`;
             }).join('');
-
             updateChart();
         };
 
         function updateChart() {
             const ctx = document.getElementById('salesChart')?.getContext('2d');
             if (!ctx) return;
-            
             const last7Days = [...Array(7)].map((_, i) => {
                 const d = new Date();
                 d.setDate(d.getDate() - (6 - i));
                 return d.toISOString().split('T')[0];
             });
-
-            const chartData = last7Days.map(date => {
-                return salesData.filter(s => s.date.startsWith(date) && s.type === 'sale').reduce((a, b) => a + b.amount, 0);
-            });
-
+            const chartData = last7Days.map(date => salesData.filter(s => s.date.startsWith(date) && s.type === 'sale').reduce((a, b) => a + b.amount, 0));
             if (chartInstance) chartInstance.destroy();
             chartInstance = new Chart(ctx, {
                 type: 'line',
@@ -388,14 +353,10 @@
                         borderWidth: 3
                     }] 
                 },
-                options: { 
-                    responsive: true, 
-                    maintainAspectRatio: false,
-                    scales: { y: { beginAtZero: true } },
-                    plugins: { legend: { display: false } }
-                }
+                options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } }
             });
         }
     </script>
 </body>
 </html>
+
