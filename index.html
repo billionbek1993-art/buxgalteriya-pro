@@ -14,7 +14,7 @@
         .loading-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.95);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -25,9 +25,11 @@
 </head>
 <body class="bg-gray-50 text-gray-800">
 
+    <!-- Yuklanish ekrani -->
     <div id="loader" class="loading-overlay">
-        <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mb-4"></div>
-        <p class="text-blue-700 font-bold">Tizimga ulanmoqda...</p>
+        <div id="loader-spinner" class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mb-4"></div>
+        <p id="loader-text" class="text-blue-700 font-bold text-center px-4">Tizimga ulanmoqda...</p>
+        <button id="retry-btn" onclick="location.reload()" class="hidden mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg">Qayta urinish</button>
     </div>
 
     <!-- Navigatsiya -->
@@ -63,12 +65,9 @@
                     <h2 id="monthlySales" class="text-2xl font-black mt-1">0 so'm</h2>
                 </div>
             </div>
+
             <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-                <div class="flex justify-between items-center mb-6">
-                    <div>
-                        <h3 class="text-lg font-bold text-gray-800">Savdo dinamikasi</h3>
-                    </div>
-                </div>
+                <h3 class="text-lg font-bold text-gray-800 mb-6">Savdo dinamikasi (Oxirgi 7 kun)</h3>
                 <div class="relative h-[300px]">
                     <canvas id="salesChart"></canvas>
                 </div>
@@ -80,7 +79,7 @@
             <div class="flex flex-col md:flex-row justify-between items-center gap-4">
                 <h2 class="text-2xl font-black text-gray-800">Mijozlar</h2>
                 <div class="flex gap-2 w-full md:w-auto">
-                    <input type="text" id="customerSearch" oninput="window.renderAll()" placeholder="Qidiruv..." class="border border-gray-200 p-2 pl-4 rounded-xl w-full md:w-64 outline-none">
+                    <input type="text" id="customerSearch" placeholder="Qidiruv..." class="border border-gray-200 p-2 pl-4 rounded-xl w-full md:w-64 outline-none">
                     <button onclick="openModal('customerModal')" class="bg-blue-600 text-white px-6 py-2 rounded-xl font-bold">+ Yangi</button>
                 </div>
             </div>
@@ -156,8 +155,16 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, onSnapshot, addDoc, updateDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Global o'zgaruvchilar (Canvas muhiti tomonidan taqdim etiladi)
-        const firebaseConfig = JSON.parse(__firebase_config);
+        // Konfiguratsiyalar
+        let firebaseConfig;
+        try {
+            firebaseConfig = JSON.parse(__firebase_config);
+        } catch (e) {
+            document.getElementById('loader-text').innerText = "Firebase konfiguratsiyasi topilmadi!";
+            document.getElementById('loader-spinner').classList.add('hidden');
+            throw new Error("Firebase config error");
+        }
+
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'davr-nazorat-app';
         const initialToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
@@ -170,7 +177,14 @@
         let activeCustomerId = null;
         let chartInstance = null;
 
-        // AUTHENTICATION: Eng birinchi bajariladigan ish
+        // Xatoliklarni ko'rsatish funksiyasi
+        const showError = (msg) => {
+            document.getElementById('loader-text').innerHTML = `<span class="text-red-600">Xatolik: ${msg}</span>`;
+            document.getElementById('loader-spinner').classList.add('hidden');
+            document.getElementById('retry-btn').classList.remove('hidden');
+        };
+
+        // Autentifikatsiya
         const initAuth = async () => {
             try {
                 if (initialToken) {
@@ -180,6 +194,7 @@
                 }
             } catch (error) {
                 console.error("Auth xatosi:", error);
+                showError("Tizimga kirish imkonsiz (Internet yoki Ruxsat yo'q)");
             }
         };
 
@@ -187,8 +202,6 @@
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 console.log("Tizimga kirildi:", user.uid);
-                document.getElementById('loader').classList.add('hidden');
-                // FAQAT kirish muvaffaqiyatli bo'lgandan keyin ma'lumotlarni tinglashni boshlaymiz
                 startSync();
             } else {
                 initAuth();
@@ -196,24 +209,38 @@
         });
 
         function startSync() {
-            // Permission xatosini oldini olish uchun onSnapshot ichida xatoliklarni tutish kerak
             const customersRef = collection(db, 'artifacts', appId, 'public', 'data', 'customers');
+            const salesRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales');
+
+            // Ma'lumotlarni tinglash
+            let loadedCount = 0;
+            const checkInitialLoad = () => {
+                loadedCount++;
+                if (loadedCount >= 2) {
+                    document.getElementById('loader').classList.add('hidden');
+                }
+            };
+
             onSnapshot(customersRef, (snap) => {
                 customersData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 window.renderAll();
+                checkInitialLoad();
             }, (error) => {
                 console.error("Mijozlarni yuklashda xato:", error);
+                showError("Bazadan ma'lumot olishda xato (Ruxsat yo'q)");
             });
 
-            const salesRef = collection(db, 'artifacts', appId, 'public', 'data', 'sales');
             onSnapshot(salesRef, (snap) => {
                 salesData = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 window.renderAll();
+                checkInitialLoad();
             }, (error) => {
                 console.error("Tarixni yuklashda xato:", error);
+                showError("Bazadan tarixni olishda xato");
             });
         }
 
+        // --- GLOBAL FUNKSIYALAR ---
         window.showTab = (id) => {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.getElementById(id).classList.add('active');
@@ -234,21 +261,26 @@
             document.getElementById(id).classList.add('hidden');
         };
 
+        // Qidiruv funksiyasi
+        document.getElementById('customerSearch').addEventListener('input', () => window.renderAll());
+
+        // Saqlash - Yangi mijoz
         document.getElementById('saveCustomerBtn').onclick = async () => {
             if (!auth.currentUser) return;
-            const name = document.getElementById('custName').value;
-            const phone = document.getElementById('custPhone').value;
+            const name = document.getElementById('custName').value.trim();
+            const phone = document.getElementById('custPhone').value.trim();
             const item = document.getElementById('custFirstItem').value || 'Dastlabki xarid';
             const total = parseFloat(document.getElementById('custTotalAmount').value) || 0;
             const paid = parseFloat(document.getElementById('custPaidAmount').value) || 0;
             const qarz = total - paid;
 
             if (!name) return;
-            
+
             try {
                 const custRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'customers'), {
                     name, phone, totalDebt: qarz, createdAt: serverTimestamp()
                 });
+
                 if (total > 0) {
                     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales'), {
                         customerId: custRef.id, item, amount: total, type: 'sale', date: new Date().toISOString()
@@ -259,18 +291,18 @@
                         customerId: custRef.id, item: 'Boshlang\'ich to\'lov', amount: paid, type: 'payment', date: new Date().toISOString()
                     });
                 }
-                
+
                 closeModal('customerModal');
                 ['custName', 'custPhone', 'custFirstItem', 'custTotalAmount', 'custPaidAmount'].forEach(id => document.getElementById(id).value = '');
-                showTab('dashboard');
             } catch (e) { console.error(e); }
         };
 
+        // To'lovni tasdiqlash
         document.getElementById('confirmPaymentBtn').onclick = async () => {
             if (!auth.currentUser || !activeCustomerId) return;
             const amount = parseFloat(document.getElementById('paymentAmount').value);
             if (!amount) return;
-            
+
             try {
                 const c = customersData.find(x => x.id === activeCustomerId);
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'sales'), {
@@ -279,20 +311,22 @@
                 await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'customers', activeCustomerId), {
                     totalDebt: (c.totalDebt || 0) - amount
                 });
-                
+
                 closeModal('paymentModal');
-                showTab('dashboard');
             } catch (e) { console.error(e); }
         };
 
         window.renderAll = () => {
-            const search = document.getElementById('customerSearch').value.toLowerCase();
+            const searchInput = document.getElementById('customerSearch');
+            const search = searchInput ? searchInput.value.toLowerCase() : "";
+
+            // Statistika
             const totalQarz = customersData.reduce((a, b) => a + (b.totalDebt || 0), 0);
             document.getElementById('totalDebts').innerText = totalQarz.toLocaleString() + " so'm";
             
             const now = new Date();
-            const today = now.toISOString().split('T')[0];
-            const todayS = salesData.filter(s => s.date.startsWith(today) && s.type === 'sale').reduce((a, b) => a + b.amount, 0);
+            const todayStr = now.toISOString().split('T')[0];
+            const todayS = salesData.filter(s => s.date.startsWith(todayStr) && s.type === 'sale').reduce((a, b) => a + b.amount, 0);
             document.getElementById('todaySales').innerText = todayS.toLocaleString() + " so'm";
 
             // Mijozlar ro'yxati
@@ -307,22 +341,21 @@
                     <td class="p-4 text-right">
                         <button onclick="openModal('paymentModal', '${c.id}')" class="bg-blue-600 text-white px-4 py-1 rounded-lg text-xs font-bold active:scale-95 transition">To'lov</button>
                     </td>
-                </tr>
-            `).join('');
+                </tr>`).join('');
 
             // Tarix
             document.getElementById('salesHistoryTable').innerHTML = salesData.sort((a,b) => new Date(b.date) - new Date(a.date)).map(s => {
                 const c = customersData.find(x => x.id === s.customerId);
                 return `
-                    <tr class="border-t text-sm">
-                        <td class="p-4 text-gray-400 font-mono">${new Date(s.date).toLocaleDateString()}</td>
-                        <td class="p-4 font-medium text-gray-700">${c ? c.name : 'O\'chirilgan'}</td>
-                        <td class="p-4 text-gray-600">${s.item}</td>
-                        <td class="p-4 font-bold ${s.type === 'sale' ? 'text-red-600' : 'text-green-600'}">${s.amount.toLocaleString()}</td>
-                        <td class="p-4"><span class="${s.type === 'sale' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'} px-2 py-1 rounded-md font-black text-[10px] uppercase">${s.type === 'sale' ? 'Nasiya' : 'To\'lov'}</span></td>
-                    </tr>
-                `;
+                <tr class="border-t text-sm">
+                    <td class="p-4 text-gray-400 font-mono">${new Date(s.date).toLocaleDateString()}</td>
+                    <td class="p-4 font-medium text-gray-700">${c ? c.name : 'O\'chirilgan'}</td>
+                    <td class="p-4 text-gray-600">${s.item}</td>
+                    <td class="p-4 font-bold ${s.type === 'sale' ? 'text-red-600' : 'text-green-600'}">${s.amount.toLocaleString()}</td>
+                    <td class="p-4"><span class="${s.type === 'sale' ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-600'} px-2 py-1 rounded-md font-black text-[10px] uppercase">${s.type === 'sale' ? 'Nasiya' : 'To\'lov'}</span></td>
+                </tr>`;
             }).join('');
+
             updateChart();
         };
 
